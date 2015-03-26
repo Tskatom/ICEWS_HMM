@@ -6,6 +6,7 @@ import numpy as np
 import os
 from matplotlib import pyplot as pl
 from pohmm import PoissonHmm
+import sys
 
 def demo(icews_file, event_type):
     events_count = pds.DataFrame.from_csv(icews_file, sep='\t', index_col=1)
@@ -48,47 +49,42 @@ def demo(icews_file, event_type):
     ax.set_title('%s' % basename)
     pl.draw()
 
-def one_step_pred(n_components, predicators, observations):
-    # observations is a array like object. n * d
-    if len(observations.shape) == 1:
-        observations = observations[np.newaxis].T
-    pmm = PoissonHmm(n_components, n_iter=1000)
-
-    X = predicators
-    # normalize trainingX
-    mean_x = np.mean(X, axis=0)
-    std_x = np.std(X, axis=0)
-    norm_x = (X - mean_x) / std_x
-    trainX = X[:-1,:]
-    testX = X[-1,:]
-    trainY = observations[:-1]
-    testY = observations[-1]
-    pmm.fit([trainX], [trainY])
-    sequence = pmm.decode(norm_trainX, trainY)
-
-
-    pmm.fit([observations])
-    preds = pmm.predict(observations)
-    ix = np.argmax(pmm.transmat_[preds[-1]])
-    pred_v = pmm.means_[ix]
-    return pred_v
-
-def test(icews_file, event_type, test_num=20):
+def pohmm_experiment(icews_file, event_type, test_num=20):
     events_count = pds.DataFrame.from_csv(icews_file, sep='\t', index_col=1)
     del events_count['20']
     del events_count['country']
-    events_count = events_count.sort_index()['2012-01-01':]
+    start = '2012-01-02'
+    end = '2015-03-22'
+    date_range = pds.date_range(start, end)
+    events_count = events_count.reindex(date_range).fillna(0)
+    events_count = events_count.sort_index()['2012-01-02':]
     events_count = events_count.resample('W', how='sum').fillna(0)
     target = event_type
+
+    #features = [c for c in events_count.columns if c != target]
+    features = ["14", "17", "18"]
     # construct the training and test set
-    Ys = events_count[target].values
+    Xs = events_count[features].values[:-1,:]
+    mean_x = np.mean(Xs, axis=0)
+    std_x = np.std(Xs, axis=0)
+    norm_xs = (Xs - mean_x) / std_x
+    # add dumpy 1 column in x
+    ones = np.ones((len(norm_xs), 1))
+    norm_xs = np.hstack([ones, norm_xs])
+
+    Ys = events_count[target].values[1:]
     testYs = Ys[-test_num:]
     preds = []
+    basename = os.path.basename(icews_file).split('_icews')[0]
     for i in range(-test_num, 0, 1):
+        trainX = norm_xs[:i,:]
         trainY = Ys[:i]
         try:
-            pred = one_step_pred(n_components=5, observations=trainY)
+            phmm = PoissonHmm(n_components=4)
+            phmm.fit([trainX], [trainY])
+            pred = phmm.one_step_predict(trainX, trainY, norm_xs[i])
             preds.append(int(pred))
+            print "Round: %d ____  %s Pred: %d, Truth: %d, score: %0.2f " % (-1*i, basename, pred, Ys[i], score(pred, Ys[i]))
         except:
             print 'Exception', icews_file
             return [],[],[]
@@ -103,21 +99,21 @@ def score(pred, truth):
 
 def main():
     import glob
-    steps = ["demo"]
-    icews_folder = "/home/weiwang/To_Jieping/icews_allevent_count/"
-    icews_files = glob.glob(icews_folder + "*")
+    steps = ["pohmm_experiment"]
+    icews_folder = "/home/weiw/workspace/data/icews/232/"
+    icews_files = glob.glob(icews_folder + "*icews_parent_event_counts*.csv")
     for step in steps:
         if step == "demo":
             for f in icews_files:
                 event_type = "14"
                 demo(f, event_type)
             pl.show()
-        elif step == "test":
+        elif step == "pohmm_experiment":
             performance = {}
             details = {}
             for f in icews_files:
                 event_type = "14"
-                testYs, preds, scores = test(f, event_type)
+                testYs, preds, scores = pohmm_experiment(f, event_type)
                 basename = os.path.basename(f).split("_icews")[0]
                 print testYs, preds, scores
                 print basename, np.mean(scores)

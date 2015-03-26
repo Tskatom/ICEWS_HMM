@@ -10,8 +10,8 @@ from util import extmath
 from matplotlib import pyplot as pl
 
 class PoissonHmm(OHmm):
-    def __init__(self, n_components, algorithm="viterbi", n_iter=70,
-                 thresh=1e-1, params=string.ascii_letters, p_rate=0.3):
+    def __init__(self, n_components, algorithm="viterbi", n_iter=500,
+                 thresh=1e-2, params=string.ascii_letters, p_rate=0.3):
         super(PoissonHmm, self).__init__(n_components, algorithm,
                                          n_iter, thresh, params)
         self.p_rate = p_rate
@@ -116,6 +116,43 @@ class PoissonHmm(OHmm):
             obj += np.sum(posts * z)
         return float(obj)
 
+    def one_step_predict(self, ins_seq, obs_seq, u, method='max'):
+        """
+        If the method = 'max', we only use the most probable status to make prediction
+        if the method = 'weighted', we use the expectation as prediction
+        params:
+        ins_seq: n * d array, d is the feature dimension
+        obs_seq: n * 1 array
+        u: d * 1 array
+        """
+        # compute the most likely future status
+        log_trans_mat = np.log(self.trans_mat)
+        log_obs_likelihood = self.compute_log_obs_likelihood(ins_seq, obs_seq)
+        n_obs, n_components = log_obs_likelihood.shape
+        v_log_forward = np.zeros((n_obs, n_components))
+        a_induction = np.zeros((n_obs, n_components), dtype=np.int) # the most probable previous status
+        v_log_forward[0] = np.log(self.start_prob) + log_obs_likelihood[0]
+
+        for t in range(1, n_obs):
+            for i in range(n_components):
+                work_buffer = v_log_forward[t-1] + log_trans_mat[:,i]
+                v_log_forward[t, i] = np.max(work_buffer) + log_obs_likelihood[t, i]
+                a_induction[t, i] = np.argmax(work_buffer)
+
+        next_status_prob = np.zeros(self.n_components, dtype=np.int)
+        for i in range(n_components):
+            work_buffer = v_log_forward[-1] + log_trans_mat[:, i]
+            next_status_prob[i] = np.max(work_buffer)
+
+        if method == 'max':
+            pred_status = np.argmax(next_status_prob)
+            prediction = int(np.exp(np.dot(self.obs_beta_mat[pred_status], u)))
+
+        elif method == 'weighted':
+            weights = np.exp(next_status_prob - np.sum(next_status_prob))
+            prediction = int(np.dot(weights, np.exp(np.dot(self.obs_beta_mat, u[np.newaxis].T))))
+        return prediction
+
 if __name__ == "__main__":
     # generate fake examples
     np.random.seed(0)
@@ -142,8 +179,6 @@ if __name__ == "__main__":
     obs = np.array(obs)
 
     phmm = PoissonHmm(n_components=4)
-    phmm.init([ins], [obs], "stp")
-
     print "Previous", phmm.obs_beta_mat
     phmm.fit([ins], [obs])
     print "Updated", phmm.obs_beta_mat

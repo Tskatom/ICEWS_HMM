@@ -216,7 +216,7 @@ class OHmm(Abstract_hmm):
                 self.accum_sufficient_statics(ins_seq, obs_seq, log_obs_likelihood, posterior, fwdlattice, bwdlattice, self.params)
             log_prob.append(curr_log_prob)
 
-            print '[------------Likelihood------------', n,'--]', curr_log_prob
+            #print '[------------Likelihood------------', n,'--]', curr_log_prob
             # check for convergence
             if n > 0 and abs(log_prob[-1] - log_prob[-2]) < self.thresh:
                 print "Converged"
@@ -289,5 +289,4 @@ class OHmm(Abstract_hmm):
         for t in range(n_obs-2, -1, -1):
             sequences[t] = a_induction[t+1, sequences[t+1]]
 
-        print "log_obs_likelihood", np.exp(log_obs_likelihood)
         return sequences
