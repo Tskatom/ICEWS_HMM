@@ -219,7 +219,7 @@ class OHmm(Abstract_hmm):
             #print '[------------Likelihood------------', n,'--]', curr_log_prob
             # check for convergence
             if n > 0 and abs(log_prob[-1] - log_prob[-2]) < self.thresh:
-                print "Converged"
+                #print "Converged"
                 break
 
             # do the maximization step

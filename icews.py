@@ -84,10 +84,11 @@ def pohmm_experiment(icews_file, event_type, test_num=20):
             phmm.fit([trainX], [trainY])
             pred = phmm.one_step_predict(trainX, trainY, norm_xs[i])
             preds.append(int(pred))
-            print "Round: %d ____  %s Pred: %d, Truth: %d, score: %0.2f " % (-1*i, basename, pred, Ys[i], score(pred, Ys[i]))
+            #print "Round: %d ____  %s Pred: %d, Truth: %d, score: %0.2f " % (-1*i, basename, pred, Ys[i], score(pred, Ys[i]))
         except:
             print 'Exception', icews_file
             return [],[],[]
+    print basename, testYs, preds, map(score, testYs, preds), np.mean(map(score, testYs, preds))
     return testYs, preds, map(score, testYs, preds)
 
 def score(pred, truth):
@@ -99,9 +100,18 @@ def score(pred, truth):
 
 def main():
     import glob
+    from multiprocessing import Process, Queue
+
+    mena_countries = ["egypt", "libya", "iraq", 'saudi arabia', 'jordan', 'syria', 'bahrain']
     steps = ["pohmm_experiment"]
     icews_folder = "/home/weiw/workspace/data/icews/232/"
-    icews_files = glob.glob(icews_folder + "*icews_parent_event_counts*.csv")
+    can_icews_files = glob.glob(icews_folder + "*icews_parent_event_counts*.csv")
+    # filter the mena countries
+    icews_files = []
+    for f in can_icews_files:
+        basename = os.path.basename(f).split('_icews')[0].split('-')[0].replace('_', ' ')
+        if basename in mena_countries:
+            icews_files.append(f)
     for step in steps:
         if step == "demo":
             for f in icews_files:
@@ -111,16 +121,14 @@ def main():
         elif step == "pohmm_experiment":
             performance = {}
             details = {}
+            ps = []
             for f in icews_files:
                 event_type = "14"
-                testYs, preds, scores = pohmm_experiment(f, event_type)
-                basename = os.path.basename(f).split("_icews")[0]
-                print testYs, preds, scores
-                print basename, np.mean(scores)
-                performance[basename] = [np.mean(scores)]
-                details[basename] = {"truth": list(testYs), "preds": list(preds), "scores": list(scores)}
-            perf_pds = pds.Series(performance)
-            detail_pds = pds.DataFrame(details)
-            perf_pds.to_csv('./data/perform.csv')
-            detail_pds.to_csv('./data/detail.csv')
+                p = Process(target=pohmm_experiment, args=(f, event_type))
+                ps.append(p)
+                p.start()
+
+            for p in ps:
+                p.join()
+
 main()
