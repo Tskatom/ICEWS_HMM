@@ -7,6 +7,13 @@ import os
 from matplotlib import pyplot as pl
 from pohmm import PoissonHmm
 import sys
+import argparse
+
+def parser():
+    arg = argparse.ArgumentParser()
+    arg.add_argument('-i', type=str, help='the icews folder')
+    arg.add_argument('-e', type=str, help='the event type')
+    return arg.parse_args()
 
 def demo(icews_file, event_type):
     events_count = pds.DataFrame.from_csv(icews_file, sep='\t', index_col=1)
@@ -61,8 +68,8 @@ def pohmm_experiment(icews_file, event_type, test_num=20):
     events_count = events_count.resample('W', how='sum').fillna(0)
     target = event_type
 
-    #features = [c for c in events_count.columns if c != target]
-    features = ["14", "17", "18"]
+    features = [c for c in events_count.columns if c != target]
+    #features = ["14", "17", "18"]
     # construct the training and test set
     Xs = events_count[features].values[:-1,:]
     mean_x = np.mean(Xs, axis=0)
@@ -84,7 +91,6 @@ def pohmm_experiment(icews_file, event_type, test_num=20):
             phmm.fit([trainX], [trainY])
             pred = phmm.one_step_predict(trainX, trainY, norm_xs[i])
             preds.append(int(pred))
-            #print "Round: %d ____  %s Pred: %d, Truth: %d, score: %0.2f " % (-1*i, basename, pred, Ys[i], score(pred, Ys[i]))
         except:
             print 'Exception', icews_file
             return [],[],[]
@@ -100,11 +106,19 @@ def score(pred, truth):
 
 def main():
     import glob
-    from multiprocessing import Process, Queue
+    from multiprocessing import Process
+    args = parser()
 
     mena_countries = ["egypt", "libya", "iraq", 'saudi arabia', 'jordan', 'syria', 'bahrain']
     steps = ["pohmm_experiment"]
-    icews_folder = "/home/weiw/workspace/data/icews/232/"
+    if args.i:
+        icews_folder = args.i
+    else:
+        icews_folder = "/home/weiw/workspace/data/icews/232/"
+    if args.e:
+        event_type = args.e
+    else:
+        event_type = "14"
     can_icews_files = glob.glob(icews_folder + "*icews_parent_event_counts*.csv")
     # filter the mena countries
     icews_files = []
@@ -115,15 +129,11 @@ def main():
     for step in steps:
         if step == "demo":
             for f in icews_files:
-                event_type = "14"
                 demo(f, event_type)
             pl.show()
         elif step == "pohmm_experiment":
-            performance = {}
-            details = {}
             ps = []
             for f in icews_files:
-                event_type = "14"
                 p = Process(target=pohmm_experiment, args=(f, event_type))
                 ps.append(p)
                 p.start()
